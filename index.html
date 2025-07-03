@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calorie Counter App</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🍽️ Calorie Analyzer</h1>
+      <p>Upload or capture food image for nutrition data</p>
+    </div>
+    <div class="upload-box">
+      <label for="file-upload" class="upload-label">Upload Food Photo</label>
+      <input type="file" id="file-upload" accept="image/*" />
+      <br>
+      <img id="preview" class="preview-img" style="display:none;" />
+      <div id="loader" class="loader" style="display:none;"></div>
+    </div>
+    <div class="cards-container" id="results"></div>
+  </div>
+  <script>
+    const fileInput = document.getElementById('file-upload');
+    const preview = document.getElementById('preview');
+    const resultsContainer = document.getElementById('results');
+    const loader = document.getElementById('loader');
+
+    fileInput.addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      loader.style.display = 'block';
+      resultsContainer.innerHTML = '';
+
+      // Preview image
+      const reader = new FileReader();
+      reader.onload = () => {
+        preview.src = reader.result;
+        preview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+
+      try {
+        // 1) Upload to ImgBB
+        const fd = new FormData(); fd.append('image', file);
+        const imRes = await fetch('https://api.imgbb.com/1/upload?key=27dc9b9fe93f9970ae3f28233c693fb6', { method: 'POST', body: fd });
+        const imJson = await imRes.json();
+        if (!imRes.ok) throw new Error(`ImgBB: ${imJson.error?.message || imRes.status}`);
+        const imageUrl = imJson.data?.url;
+        if (!imageUrl) throw new Error('ImgBB did not return url');
+
+        // 2) Call our proxy (serverless) endpoint
+        const proxyRes = await fetch('/api/calories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl })
+        });
+
+        // Read raw text and guard empty
+        const rawText = await proxyRes.text();
+        if (!rawText) throw new Error('Empty response from server');
+
+        let groqJson;
+        try {
+          groqJson = JSON.parse(rawText);
+        } catch {
+          throw new Error('Invalid JSON from server');
+        }
+        if (!proxyRes.ok) {
+          throw new Error(groqJson.error || `Proxy ${proxyRes.status}`);
+        }
+
+        // Extract and parse assistant content
+        let raw = groqJson.choices?.[0]?.message?.content;
+        if (typeof raw === 'string') {
+          try { raw = JSON.parse(raw); } catch {
+            throw new Error('Invalid JSON in assistant response');
+          }
+        }
+        if (!raw.items) throw new Error('No items in response');
+
+        displayResults(raw.items);
+      } catch (err) {
+        console.error(err);
+        resultsContainer.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
+      } finally {
+        loader.style.display = 'none';
+      }
+    });
+
+    function displayResults(items) {
+      resultsContainer.innerHTML = '';
+      const DAILY = 2000;
+      items.forEach(item => {
+        const pct = Math.min(item.total_calories / DAILY * 100, 100);
+        const r = 45, c = 2 * Math.PI * r;
+        const off = c * (1 - pct / 100);
+
+        const card = document.createElement('div'); card.className = 'card';
+        card.innerHTML = `
+          <div class="progress-container">
+            <svg class="progress-circle" viewBox="0 0 100 100">
+              <circle class="bg" cx="50" cy="50" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="0"></circle>
+              <circle class="progress" cx="50" cy="50" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${off}"></circle>
+            </svg>
+            <div class="progress-text">${Math.round(pct)}%</div>
+          </div>
+          <h3>${item.item_name}</h3>
+          <p>Calories: <strong>${item.total_calories}</strong> kcal</p>
+          <p>Protein: ${item.total_protien || 'N/A'}g</p>
+          <p>Carbs: ${item.total_carbs ?? item.toal_carbs}g</p>
+          <p>Fats: ${item.total_fats ?? item.toal_fats}g</p>
+        `;
+        resultsContainer.appendChild(card);
+      });
+    }
+  </script>
+</body>
+</html>
