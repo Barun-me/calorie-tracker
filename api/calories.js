@@ -1,7 +1,22 @@
 // api/calories.js
+import fetch from 'node-fetch'
+import { json }    from 'micro'
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).send({ error: 'Only POST' });
+    return res.status(405).json({ error: 'Only POST allowed' })
+  }
+
+  let body
+  try {
+    body = await json(req)       // ← parses the incoming JSON
+  } catch (err) {
+    return res.status(400).json({ error: 'Invalid JSON' })
+  }
+
+  const { imageUrl } = body
+  if (!imageUrl) {
+    return res.status(400).json({ error: 'Missing imageUrl' })
   }
 
   try {
