@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,7 +10,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
-
 <body>
   <div class="container">
     <div class="header">
@@ -50,8 +48,11 @@
 
       try {
         // 1) Upload to ImgBB
-        const fd = new FormData(); fd.append('image', file);
-        const imRes = await fetch('https://api.imgbb.com/1/upload?key=27dc9b9fe93f9970ae3f28233c693fb6', { method: 'POST', body: fd });
+        const fd = new FormData();
+        fd.append('image', file);
+        const imRes = await fetch('https://api.imgbb.com/1/upload?key=27dc9b9fe93f9970ae3f28233c693fb6', {
+          method: 'POST', body: fd
+        });
         const imJson = await imRes.json();
         if (!imRes.ok) throw new Error(`ImgBB: ${imJson.error?.message || imRes.status}`);
         const imageUrl = imJson.data?.url;
@@ -79,54 +80,40 @@
 
         // Extract assistant content and parse
         let contentRaw = groqJson.choices?.[0]?.message?.content;
-        console.log(contentRaw);
+        console.log('AI returned:', contentRaw);
         if (typeof contentRaw === 'string') {
           try {
             contentRaw = JSON.parse(contentRaw);
           } catch {
-            throw new Error(`Invalid JSON in assistant response`);
+            throw new Error('Invalid JSON in assistant response');
           }
         }
 
-        // Now normalize contentRaw into items array
+        // Normalize into array of items with correct keys
         let items;
         if (Array.isArray(contentRaw.items)) {
-          items = contentRaw.items;
+          items = contentRaw.items.map(item => ({
+            item_name: item.item_name,
+            total_calories: item.total_calories ?? 0,
+            total_protein:  item.total_protein ?? item.total_protien ?? 0,
+            total_carbs:    item.total_carbs   ?? item.toal_carbs   ?? 0,
+            total_fats:     item.total_fats    ?? item.toal_fats    ?? 0
+          }));
         } else if (typeof contentRaw === 'object') {
-          // contentRaw is a map: key = item_name, value = calories
-          items = Object.entries(contentRaw).map(([name, val]) => {
-            if (typeof val === 'number') {
-              return {
-                item_name: name,
-                total_calories: val,
-                total_protien: 'N/A',
-                toal_carbs: 'N/A',
-                toal_fats: 'N/A'
-              };
-            } else if (typeof val === 'object') {
-              return {
-                item_name: name,
-                total_calories: val.total_calories ?? val.calories ?? 0,
-                total_protien: val.total_protien ?? val.total_protein ?? 'N/A',
-                toal_carbs: val.toal_carbs ?? val.total_carbs ?? 'N/A',
-                toal_fats: val.toal_fats ?? val.total_fats ?? 'N/A'
-              };
-            } else {
-              return {
-                item_name: name,
-                total_calories: 0,
-                total_protien: 'N/A',
-                toal_carbs: 'N/A',
-                toal_fats: 'N/A'
-              };
-            }
-          });
-
+          // fallback: map of name→calories
+          items = Object.entries(contentRaw).map(([name, val]) => ({
+            item_name: name,
+            total_calories: val,
+            total_protein:  0,
+            total_carbs:    0,
+            total_fats:     0
+          }));
         } else {
-          throw new Error(`Unexpected response format: ${JSON.stringify(contentRaw)}`);
+          throw new Error(`Unexpected format: ${JSON.stringify(contentRaw)}`);
         }
+
         if (items.length === 0) {
-          throw new Error(`No items parsed from response`);
+          throw new Error('No items parsed from response');
         }
 
         displayResults(items);
@@ -146,25 +133,27 @@
         const r = 45, c = 2 * Math.PI * r;
         const off = c * (1 - pct / 100);
 
-        const card = document.createElement('div'); card.className = 'card';
+        const card = document.createElement('div');
+        card.className = 'card';
         card.innerHTML = `
           <div class="progress-container">
             <svg class="progress-circle" viewBox="0 0 100 100">
-              <circle class="bg" cx="50" cy="50" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="0"></circle>
-              <circle class="progress" cx="50" cy="50" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${off}"></circle>
+              <circle class="bg" cx="50" cy="50" r="${r}"
+                      stroke-dasharray="${c}" stroke-dashoffset="0"></circle>
+              <circle class="progress" cx="50" cy="50" r="${r}"
+                      stroke-dasharray="${c}" stroke-dashoffset="${off}"></circle>
             </svg>
             <div class="progress-text">${Math.round(pct)}%</div>
           </div>
           <h3>${item.item_name}</h3>
           <p>Calories: <strong>${item.total_calories}</strong> kcal</p>
-          <p>Protein: ${item.total_protien || 'N/A'}g</p>
-          <p>Carbs: ${item.toal_carbs || 0}g</p>
-          <p>Fats: ${item.toal_fats || 0}g</p>
+          <p>Protein: ${item.total_protein}g</p>
+          <p>Carbs:   ${item.total_carbs}g</p>
+          <p>Fats:    ${item.total_fats}g</p>
         `;
         resultsContainer.appendChild(card);
       });
     }
   </script>
 </body>
-
 </html>
