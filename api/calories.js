@@ -1,11 +1,10 @@
 // api/calories.js
-import fetch from 'node-fetch';
 import { json } from 'micro';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.statusCode = 405;
-    return res.end(JSON.stringify({ error: 'Only POST' }));
+    return res.end(JSON.stringify({ error: 'Only POST allowed' }));
   }
 
   let body;
@@ -23,47 +22,46 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { imageUrl } = await req.json();
-
-    // 1) Call Groq API with your secret key from env
-    const payload = {
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Give calories of each item in this image in this below JSON format only\n {items:[{item_name:name of item, total_calories:in gm, total_protien:in gm , toal_carbs: in gm ,toal_fats:in gm},...]}' },
-            { type: 'image_url', image_url: { url: imageUrl } }
-          ]
-        }
-      ],
-      temperature: 1,
-      max_completion_tokens: 1024,
-      top_p: 1,
-      stream: false,
-      response_format: { type: 'json_object' }
-    };
-
+    // Note: using global `fetch` here
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.GROQ_KEY}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Give calories of each item in this image in JSON format only.'
+              },
+              { type: 'image_url', image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        temperature: 1,
+        max_completion_tokens: 1024,
+        top_p: 1,
+        stream: false,
+        response_format: { type: 'json_object' }
+      })
     });
 
     const text = await groqRes.text();
     if (!groqRes.ok) {
-      throw new Error(`Groq error ${groqRes.status}: ${text}`);
+      throw new Error(`Groq ${groqRes.status}: ${text}`);
     }
 
-    // Forward the exact JSON response
     res.setHeader('Content-Type', 'application/json');
-    res.status(200).send(text);
+    return res.end(text);
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.statusCode = 500;
+    return res.end(JSON.stringify({ error: err.message }));
   }
 }
