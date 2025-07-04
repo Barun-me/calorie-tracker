@@ -96,10 +96,4 @@ Please adhere to [Semantic Versioning](https://semver.org/) and maintain consis
 
 ---
 
-## 📜 License
-
-This project is released under the **MIT License**. See [LICENSE](LICENSE) for details.
-
----
-
 > Built with ❤️ and ⚡ by Barunangshu Bhowmik (https://github.com/Barun-me)
