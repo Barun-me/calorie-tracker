@@ -51,45 +51,44 @@
         const imageUrl = imJson.data?.url;
         if (!imageUrl) throw new Error('ImgBB did not return url');
 
-        // 2) Call our proxy (serverless) endpoint
+        // 2) Call proxy endpoint
         const proxyRes = await fetch('/api/calories', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ imageUrl })
         });
-
-        // Read raw text and guard empty
         const rawText = await proxyRes.text();
         if (!rawText) throw new Error('Empty response from server');
 
-        let groqJson;
+        let responseObj;
         try {
-          groqJson = JSON.parse(rawText);
+          responseObj = JSON.parse(rawText);
         } catch {
           throw new Error('Invalid JSON from server');
         }
         if (!proxyRes.ok) {
-          throw new Error(groqJson.error || `Proxy ${proxyRes.status}`);
+          throw new Error(responseObj.error || `Server ${proxyRes.status}`);
         }
 
-        // Extract assistant content
-        let raw = groqJson.choices?.[0]?.message?.content;
-        console.log('Assistant content:', raw);
-        let contentObj;
-        if (typeof raw === 'string') {
-          try {
-            contentObj = JSON.parse(raw);
-          } catch {
-            throw new Error(`Invalid JSON in assistant response: ${raw}`);
-          }
-        } else {
-          contentObj = raw;
+        // Normalize response to items array
+        let items = [];
+        if (Array.isArray(responseObj.items)) {
+          items = responseObj.items;
+        } else if (typeof responseObj === 'object') {
+          // fallback: keys are item names, values are calories
+          items = Object.entries(responseObj).map(([name, cal]) => ({
+            item_name: name,
+            total_calories: cal,
+            total_protien: responseObj[name + '_protein'] || 0,
+            toal_carbs: responseObj[name + '_carbs'] || 0,
+            toal_fats: responseObj[name + '_fats'] || 0
+          }));
         }
-        if (!contentObj || !Array.isArray(contentObj.items)) {
-          throw new Error(`Unexpected response format: ${JSON.stringify(contentObj)}`);
+        if (items.length === 0) {
+          throw new Error(`No items found in response: ${JSON.stringify(responseObj)}`);
         }
 
-        displayResults(contentObj.items);
+        displayResults(items);
       } catch (err) {
         console.error(err);
         resultsContainer.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
@@ -118,8 +117,8 @@
           <h3>${item.item_name}</h3>
           <p>Calories: <strong>${item.total_calories}</strong> kcal</p>
           <p>Protein: ${item.total_protien || 'N/A'}g</p>
-          <p>Carbs: ${item.total_carbs ?? item.toal_carbs}g</p>
-          <p>Fats: ${item.total_fats ?? item.toal_fats}g</p>
+          <p>Carbs: ${item.toal_carbs || 0}g</p>
+          <p>Fats: ${item.toal_fats || 0}g</p>
         `;
         resultsContainer.appendChild(card);
       });
