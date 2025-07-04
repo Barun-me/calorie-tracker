@@ -22,7 +22,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Note: using global `fetch` here
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -35,10 +34,7 @@ export default async function handler(req, res) {
           {
             role: 'user',
             content: [
-              {
-                type: 'text',
-                text: 'Give calories of each item in this image in JSON format only.'
-              },
+              { type: 'text', text: 'Give calories of each item in this image in JSON format only.' },
               { type: 'image_url', image_url: { url: imageUrl } }
             ]
           }
@@ -53,6 +49,11 @@ export default async function handler(req, res) {
 
     const text = await groqRes.text();
     if (!groqRes.ok) {
+      // inspect error body
+      if (text.includes('context deadline exceeded')) {
+        res.statusCode = 504; // upstream timeout
+        return res.end(JSON.stringify({ error: 'Model request timed out. Please try again or use a smaller image.' }));
+      }
       throw new Error(`Groq ${groqRes.status}: ${text}`);
     }
 
@@ -61,7 +62,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error(err);
-    res.statusCode = 500;
+    res.statusCode = err.message.includes('timed out') ? 504 : 500;
     return res.end(JSON.stringify({ error: err.message }));
   }
 }

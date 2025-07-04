@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
+
 <body>
   <div class="container">
     <div class="header">
@@ -84,7 +86,11 @@
         displayResults(raw.items);
       } catch (err) {
         console.error(err);
-        resultsContainer.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
+        let msg = err.message;
+        if (msg.includes('timed out')) {
+          msg = 'The calorie service took too long. Try again with a simpler image.';
+        }
+        resultsContainer.innerHTML = `<p style="color:red;">Error: ${msg}</p>`;
       } finally {
         loader.style.display = 'none';
       }
@@ -118,4 +124,5 @@
     }
   </script>
 </body>
+
 </html>
