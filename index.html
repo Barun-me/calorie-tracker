@@ -1,68 +1,169 @@
-// api/calories.js
-import { json } from 'micro';
+<!DOCTYPE html>
+<html lang="en">
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.statusCode = 405;
-    return res.end(JSON.stringify({ error: 'Only POST allowed' }));
-  }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calorie Analyzer App</title>
+  <!-- Favicon using emoji as SVG data-uri -->
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-size='48'%3E🍽️%3C/text%3E%3C/svg%3E">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
 
-  let body;
-  try {
-    body = await json(req);
-  } catch {
-    res.statusCode = 400;
-    return res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-  }
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🍽️ Calorie Analyzer</h1>
+      <p>Upload or capture food image for nutrition data</p>
+    </div>
+    <div class="upload-box">
+      <label for="file-upload" class="upload-label">Upload Food Photo</label>
+      <input type="file" id="file-upload" accept="image/*" />
+      <br>
+      <img id="preview" class="preview-img" style="display:none;" />
+      <div id="loader" class="loader" style="display:none;"></div>
+    </div>
+    <div class="cards-container" id="results"></div>
+  </div>
 
-  const { imageUrl } = body;
-  if (!imageUrl) {
-    res.statusCode = 400;
-    return res.end(JSON.stringify({ error: 'Missing imageUrl' }));
-  }
+  <script>
+    const fileInput = document.getElementById('file-upload');
+    const preview = document.getElementById('preview');
+    const resultsContainer = document.getElementById('results');
+    const loader = document.getElementById('loader');
 
-  try {
-    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: 'Give nutrition details for each item in the image. Respond in the following JSON format: {items:[{item_name, total_calories, total_protien, toal_carbs, toal_fats}]}. Provide approximate values even if not exact.' },
-              { type: 'image_url', image_url: { url: imageUrl } }
-            ]
+    fileInput.addEventListener('change', async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      loader.style.display = 'block';
+      resultsContainer.innerHTML = '';
+
+      // Preview image
+      const reader = new FileReader();
+      reader.onload = () => {
+        preview.src = reader.result;
+        preview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+
+      try {
+        // 1) Upload to ImgBB
+        const fd = new FormData(); fd.append('image', file);
+        const imRes = await fetch('https://api.imgbb.com/1/upload?key=27dc9b9fe93f9970ae3f28233c693fb6', { method: 'POST', body: fd });
+        const imJson = await imRes.json();
+        if (!imRes.ok) throw new Error(`ImgBB: ${imJson.error?.message || imRes.status}`);
+        const imageUrl = imJson.data?.url;
+        if (!imageUrl) throw new Error('ImgBB did not return url');
+
+        // 2) Call proxy endpoint
+        const proxyRes = await fetch('/api/calories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl })
+        });
+        const rawText = await proxyRes.text();
+        if (!rawText) throw new Error('Empty response from server');
+
+        // Parse top-level response
+        let groqJson;
+        try {
+          groqJson = JSON.parse(rawText);
+        } catch {
+          throw new Error('Invalid JSON from server');
+        }
+        if (!proxyRes.ok) {
+          throw new Error(groqJson.error || `Server ${proxyRes.status}`);
+        }
+
+        // Extract assistant content and parse
+        let contentRaw = groqJson.choices?.[0]?.message?.content;
+        if (typeof contentRaw === 'string') {
+          try {
+            contentRaw = JSON.parse(contentRaw);
+          } catch {
+            throw new Error(`Invalid JSON in assistant response`);
           }
-        ],
-        temperature: 1,
-        max_completion_tokens: 1024,
-        top_p: 1,
-        stream: false,
-        response_format: { type: 'json_object' }
-      })
+        }
+
+        // Now normalize contentRaw into items array
+        let items;
+        if (Array.isArray(contentRaw.items)) {
+          items = contentRaw.items;
+        } else if (typeof contentRaw === 'object') {
+          // contentRaw is a map: key = item_name, value = calories
+          items = Object.entries(contentRaw).map(([name, val]) => {
+            if (typeof val === 'number') {
+              return {
+                item_name: name,
+                total_calories: val,
+                total_protien: 'N/A',
+                toal_carbs: 'N/A',
+                toal_fats: 'N/A'
+              };
+            } else if (typeof val === 'object') {
+              return {
+                item_name: name,
+                total_calories: val.total_calories ?? val.calories ?? 0,
+                total_protien: val.total_protien ?? val.total_protein ?? 'N/A',
+                toal_carbs: val.toal_carbs ?? val.total_carbs ?? 'N/A',
+                toal_fats: val.toal_fats ?? val.total_fats ?? 'N/A'
+              };
+            } else {
+              return {
+                item_name: name,
+                total_calories: 0,
+                total_protien: 'N/A',
+                toal_carbs: 'N/A',
+                toal_fats: 'N/A'
+              };
+            }
+          });
+
+        } else {
+          throw new Error(`Unexpected response format: ${JSON.stringify(contentRaw)}`);
+        }
+        if (items.length === 0) {
+          throw new Error(`No items parsed from response`);
+        }
+
+        displayResults(items);
+      } catch (err) {
+        console.error(err);
+        resultsContainer.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
+      } finally {
+        loader.style.display = 'none';
+      }
     });
 
-    const text = await groqRes.text();
-    if (!groqRes.ok) {
-      // inspect error body
-      if (text.includes('context deadline exceeded')) {
-        res.statusCode = 504; // upstream timeout
-        return res.end(JSON.stringify({ error: 'Model request timed out. Please try again or use a smaller image.' }));
-      }
-      throw new Error(`Groq ${groqRes.status}: ${text}`);
+    function displayResults(items) {
+      resultsContainer.innerHTML = '';
+      const DAILY = 2000;
+      items.forEach(item => {
+        const pct = Math.min(item.total_calories / DAILY * 100, 100);
+        const r = 45, c = 2 * Math.PI * r;
+        const off = c * (1 - pct / 100);
+
+        const card = document.createElement('div'); card.className = 'card';
+        card.innerHTML = `
+          <div class="progress-container">
+            <svg class="progress-circle" viewBox="0 0 100 100">
+              <circle class="bg" cx="50" cy="50" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="0"></circle>
+              <circle class="progress" cx="50" cy="50" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${off}"></circle>
+            </svg>
+            <div class="progress-text">${Math.round(pct)}%</div>
+          </div>
+          <h3>${item.item_name}</h3>
+          <p>Calories: <strong>${item.total_calories}</strong> kcal</p>
+          <p>Protein: ${item.total_protien || 'N/A'}g</p>
+          <p>Carbs: ${item.toal_carbs || 0}g</p>
+          <p>Fats: ${item.toal_fats || 0}g</p>
+        `;
+        resultsContainer.appendChild(card);
+      });
     }
+  </script>
+</body>
 
-    res.setHeader('Content-Type', 'application/json');
-    return res.end(text);
-
-  } catch (err) {
-    console.error(err);
-    res.statusCode = err.message.includes('timed out') ? 504 : 500;
-    return res.end(JSON.stringify({ error: err.message }));
-  }
-}
+</html>
