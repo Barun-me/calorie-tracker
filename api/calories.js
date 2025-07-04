@@ -34,7 +34,22 @@ export default async function handler(req, res) {
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Give calories of each item in this image in JSON format only.' },
+              {
+                type: 'text', 
+                text: `Analyze this food image and return a JSON object in the following format exactly (no extra fields):
+                {
+                  "items": [
+                            {
+                              "item_name": "<name of food>",
+                              "total_calories": <calories as number>,
+                              "total_protein": <protein in grams>,
+                              "total_carbs": <carbohydrates in grams>,
+                              "total_fats": <fats in grams>
+                            },
+                      …
+                  ],
+                }`
+              },
               { type: 'image_url', image_url: { url: imageUrl } }
             ]
           }
