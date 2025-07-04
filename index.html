@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,7 +7,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/styles.css">
 </head>
-
 <body>
   <div class="container">
     <div class="header">
@@ -74,23 +72,27 @@
           throw new Error(groqJson.error || `Proxy ${proxyRes.status}`);
         }
 
-        // Extract and parse assistant content
+        // Extract assistant content
         let raw = groqJson.choices?.[0]?.message?.content;
+        console.log('Assistant content:', raw);
+        let contentObj;
         if (typeof raw === 'string') {
-          try { raw = JSON.parse(raw); } catch {
-            throw new Error('Invalid JSON in assistant response');
+          try {
+            contentObj = JSON.parse(raw);
+          } catch {
+            throw new Error(`Invalid JSON in assistant response: ${raw}`);
           }
+        } else {
+          contentObj = raw;
         }
-        if (!raw.items) throw new Error('No items in response');
+        if (!contentObj || !Array.isArray(contentObj.items)) {
+          throw new Error(`Unexpected response format: ${JSON.stringify(contentObj)}`);
+        }
 
-        displayResults(raw.items);
+        displayResults(contentObj.items);
       } catch (err) {
         console.error(err);
-        let msg = err.message;
-        if (msg.includes('timed out')) {
-          msg = 'The calorie service took too long. Try again with a simpler image.';
-        }
-        resultsContainer.innerHTML = `<p style="color:red;">Error: ${msg}</p>`;
+        resultsContainer.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
       } finally {
         loader.style.display = 'none';
       }
@@ -124,5 +126,4 @@
     }
   </script>
 </body>
-
 </html>
