@@ -36,7 +36,7 @@ export default async function handler(req, res) {
             content: [
               {
                 type: 'text', 
-                text:  "Give nutrition details for each item in the image. Respond in the following JSON format: {items:[{item_name, total_calories, total_protien, toal_carbs, toal_fats}]}. Provide approximate values even if not exact."
+                text:   "Give calories of each item in this image in this below JSON format only\n {items:[{item_name:name of item, total_calories:in gm, total_protien:in gm , toal_carbs: in gm ,toal_fats:in gm},...]}"
               },
               { type: 'image_url', image_url: { url: imageUrl } }
             ]
