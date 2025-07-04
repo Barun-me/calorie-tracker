@@ -22,6 +22,7 @@
     </div>
     <div class="cards-container" id="results"></div>
   </div>
+
   <script>
     const fileInput = document.getElementById('file-upload');
     const preview = document.getElementById('preview');
@@ -60,32 +61,45 @@
         const rawText = await proxyRes.text();
         if (!rawText) throw new Error('Empty response from server');
 
-        let responseObj;
+        // Parse top-level response
+        let groqJson;
         try {
-          responseObj = JSON.parse(rawText);
+          groqJson = JSON.parse(rawText);
         } catch {
           throw new Error('Invalid JSON from server');
         }
         if (!proxyRes.ok) {
-          throw new Error(responseObj.error || `Server ${proxyRes.status}`);
+          throw new Error(groqJson.error || `Server ${proxyRes.status}`);
         }
 
-        // Normalize response to items array
-        let items = [];
-        if (Array.isArray(responseObj.items)) {
-          items = responseObj.items;
-        } else if (typeof responseObj === 'object') {
-          // fallback: keys are item names, values are calories
-          items = Object.entries(responseObj).map(([name, cal]) => ({
+        // Extract assistant content and parse
+        let contentRaw = groqJson.choices?.[0]?.message?.content;
+        if (typeof contentRaw === 'string') {
+          try {
+            contentRaw = JSON.parse(contentRaw);
+          } catch {
+            throw new Error(`Invalid JSON in assistant response`);
+          }
+        }
+
+        // Now normalize contentRaw into items array
+        let items;
+        if (Array.isArray(contentRaw.items)) {
+          items = contentRaw.items;
+        } else if (typeof contentRaw === 'object') {
+          // contentRaw is a map: key = item_name, value = calories
+          items = Object.entries(contentRaw).map(([name, cal]) => ({
             item_name: name,
             total_calories: cal,
-            total_protien: responseObj[name + '_protein'] || 0,
-            toal_carbs: responseObj[name + '_carbs'] || 0,
-            toal_fats: responseObj[name + '_fats'] || 0
+            total_protien: 0,
+            toal_carbs: 0,
+            toal_fats: 0
           }));
+        } else {
+          throw new Error(`Unexpected response format: ${JSON.stringify(contentRaw)}`);
         }
         if (items.length === 0) {
-          throw new Error(`No items found in response: ${JSON.stringify(responseObj)}`);
+          throw new Error(`No items parsed from response`);
         }
 
         displayResults(items);
