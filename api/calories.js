@@ -1,4 +1,5 @@
 // api/calories.js
+import fetch from 'node-fetch';
 import { json } from 'micro';
 
 export default async function handler(req, res) {
