@@ -79,6 +79,7 @@
 
         // Extract assistant content and parse
         let contentRaw = groqJson.choices?.[0]?.message?.content;
+        console.log(contentRaw);
         if (typeof contentRaw === 'string') {
           try {
             contentRaw = JSON.parse(contentRaw);
